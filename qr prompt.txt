@@ -1,0 +1,8 @@
+<<<<<<< HEAD
+qr yada kodla arkadaş eklenecek ama mesajlar 24 saat sonra silinecek ama kullanıcı isterse arkadaşını silebilecek bu özelliği ekle.
+
+=======
+qr yada kodla arkadaş eklenecek ama mesajlar 24 saat sonra silinecek ama kullanıcı isterse arkadaşını silebilecek bu özelliği ekle.
+
+>>>>>>> 200085356c469afb611e9321a378e6c95e73d415
+qr oluştur sayfasında ki   Kamerası yoksa veya kod uzunsa, aşağıdaki metni kopyalayıp gönder.    yazıyı sil
