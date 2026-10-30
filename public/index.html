@@ -629,30 +629,45 @@ $id('settingsBack').addEventListener('click', () => show('home'));
 /* =====================================================================
    WEBRTC PAIRING (unchanged logic, now feeding the IndexedDB layer)
    ===================================================================== */
-const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' }
+  ]
+};
 let pc = null, dc = null, activePeerId = null;
 let connStatus = {}; // in-memory only, resets on reload
 
 function waitIceComplete(peerConn){
   return new Promise(resolve => {
     if(peerConn.iceGatheringState === 'complete') return resolve();
+    let timer;
     const onchange = () => {
       if(peerConn.iceGatheringState === 'complete'){
+        clearTimeout(timer);
         peerConn.removeEventListener('icegatheringstatechange', onchange);
         resolve();
       }
     };
     peerConn.addEventListener('icegatheringstatechange', onchange);
-    setTimeout(resolve, 4000);
+    // STUN genel IP adaylarının toplanabilmesi için 5 sn bekle
+    timer = setTimeout(() => {
+      peerConn.removeEventListener('icegatheringstatechange', onchange);
+      resolve();
+    }, 5000);
   });
 }
 
-// Keeps the SDP small (and the QR scannable) by dropping TCP/IPv6 candidates
-// and capping how many UDP candidates get embedded — a couple are enough.
-function trimSdpCandidates(sdpText, maxCandidates){
+// Keeps the SDP small for QR while strictly prioritizing public (srflx/relay) IP candidates
+// so cross-network (WiFi <-> Cellular) P2P connections can successfully establish.
+function trimSdpCandidates(sdpText, maxCandidates = 6){
   const lines = sdpText.split(/\r?\n/);
-  let kept = 0;
-  const out = [];
+  const srflx = [];
+  const host = [];
+  const otherLines = [];
+
   for(const line of lines){
     if(line.startsWith('a=candidate:')){
       const parts = line.split(' ');
@@ -660,10 +675,33 @@ function trimSdpCandidates(sdpText, maxCandidates){
       const addr = parts[4] || '';
       const isIPv6 = addr.includes(':');
       if(transport !== 'udp' || isIPv6) continue;
-      if(kept >= maxCandidates) continue;
-      kept++;
+
+      const typeIdx = parts.indexOf('typ');
+      const candType = typeIdx !== -1 ? parts[typeIdx + 1] : '';
+      if(candType === 'srflx' || candType === 'relay'){
+        srflx.push(line);
+      } else {
+        host.push(line);
+      }
+    } else {
+      otherLines.push(line);
     }
-    out.push(line);
+  }
+
+  // En kritik adaylar STUN'dan dönen genel IP (srflx) adaylarıdır. Önce srflx, ardından host adayları eklenir.
+  const selectedCandidates = [...srflx, ...host].slice(0, maxCandidates);
+
+  const out = [];
+  let candidatesAdded = false;
+  for(const line of lines){
+    if(line.startsWith('a=candidate:')){
+      if(!candidatesAdded){
+        out.push(...selectedCandidates);
+        candidatesAdded = true;
+      }
+    } else {
+      out.push(line);
+    }
   }
   return out.join('\r\n');
 }
@@ -709,7 +747,7 @@ function attachIceDebug(peerConn, statusElId){
     if(el) el.textContent = 'Durum: ' + (label[peerConn.iceConnectionState] || peerConn.iceConnectionState);
   });
 }
-async function buildOffer(reuseId){
+async function buildOffer(reuseId, forQr = false){
   pc = new RTCPeerConnection(RTC_CONFIG);
   const tempId = reuseId || (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now());
   const channel = pc.createDataChannel('chat');
@@ -717,17 +755,19 @@ async function buildOffer(reuseId){
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   await waitIceComplete(pc);
-  const trimmed = { type: pc.localDescription.type, sdp: trimSdpCandidates(pc.localDescription.sdp, 4) };
+  const sdp = forQr ? trimSdpCandidates(pc.localDescription.sdp, 6) : pc.localDescription.sdp;
+  const trimmed = { type: pc.localDescription.type, sdp };
   return { payload:{ t:'offer', id:tempId, n:me.name, sdp:trimmed }, id:tempId };
 }
-async function buildAnswer(offerPayload){
+async function buildAnswer(offerPayload, forQr = false){
   pc = new RTCPeerConnection(RTC_CONFIG);
   pc.ondatachannel = (e) => setupDataChannel(e.channel, offerPayload.id, offerPayload.n);
   await pc.setRemoteDescription(offerPayload.sdp);
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   await waitIceComplete(pc);
-  const trimmed = { type: pc.localDescription.type, sdp: trimSdpCandidates(pc.localDescription.sdp, 4) };
+  const sdp = forQr ? trimSdpCandidates(pc.localDescription.sdp, 6) : pc.localDescription.sdp;
+  const trimmed = { type: pc.localDescription.type, sdp };
   return { t:'answer', id:offerPayload.id, n:me.name, sdp:trimmed };
 }
 async function applyAnswer(answerPayload){
@@ -827,7 +867,7 @@ async function startRoomHostFlow(){
   const body = $id('pairBody');
   body.innerHTML = '<div class="step-label">bağlantı hazırlanıyor…</div>';
   let built;
-  try{ built = await buildOffer(reconnectTargetId); }
+  try{ built = await buildOffer(reconnectTargetId, false); }
   catch(err){
     body.innerHTML = `<div class="step-label">Hata</div><p class="hint">Bağlantı hazırlanamadı: ${escapeHtml(err.message)}</p>`;
     return;
@@ -954,7 +994,7 @@ async function startRoomJoinFlow(){
       return;
     }
     let answerPayload;
-    try{ answerPayload = await buildAnswer(res.offer); }
+    try{ answerPayload = await buildAnswer(res.offer, false); }
     catch(err){
       errEl.textContent = 'Bağlantı kurulamadı: ' + err.message;
       btn.disabled = false; btn.textContent = 'Bağlan';
@@ -1028,7 +1068,7 @@ async function startInviteFlow(){
   const body = $id('pairBody');
   body.innerHTML = '<div class="step-label">1 / 2 — kod hazırlanıyor…</div>';
   let built;
-  try{ built = await buildOffer(reconnectTargetId); }
+  try{ built = await buildOffer(reconnectTargetId, true); }
   catch(err){ body.innerHTML = `<div class="step-label">Hata</div><p class="hint">Kod oluşturulamadı: ${escapeHtml(err.message)}</p>`; return; }
   const code = encodePayload(built.payload);
   body.innerHTML = `
@@ -1081,7 +1121,7 @@ async function startJoinFlow(){
     try{ offerPayload = decodePayload(raw); }
     catch(err){ $id('pairExtra').innerHTML = `<p class="hint" style="color:var(--danger)">Kod geçersiz: ${escapeHtml(err.message)}</p>`; return; }
     let answerPayload;
-    try{ answerPayload = await buildAnswer(offerPayload); }
+    try{ answerPayload = await buildAnswer(offerPayload, true); }
     catch(err){ $id('pairExtra').innerHTML = `<p class="hint" style="color:var(--danger)">Cevap oluşturulamadı: ${escapeHtml(err.message)}</p>`; return; }
     const code = encodePayload(answerPayload);
     body.innerHTML = `

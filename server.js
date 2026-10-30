@@ -159,17 +159,36 @@ io.on('connection', (socket) => {
   });
 
   // Katılan taraf: cevabı oda sahibine iletir, oda tek kullanımlık silinir
-  socket.on('answer', (data) => {
-    if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+  socket.on('answer', (data, cb) => {
+    if (typeof cb !== 'function') cb = () => {};
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      cb({ error: 'Geçersiz veri.' });
+      return;
+    }
     const code = normalizeCode(data.code);
-    if (code.length !== CODE_LENGTH) return;
-    if (!hasSdpShape(data.answer, 'answer')) return;
-    if (!rateAllow(socket.id, 'answer', ANSWER_ATTEMPTS_MAX, ANSWER_ATTEMPTS_WINDOW_MS)) return;
+    if (code.length !== CODE_LENGTH) {
+      cb({ error: 'Geçersiz oda kodu.' });
+      return;
+    }
+    if (!hasSdpShape(data.answer, 'answer')) {
+      cb({ error: 'Geçersiz answer SDP verisi.' });
+      return;
+    }
+    if (!rateAllow(socket.id, 'answer', ANSWER_ATTEMPTS_MAX, ANSWER_ATTEMPTS_WINDOW_MS)) {
+      cb({ error: 'Çok fazla deneme yaptın, biraz bekle.' });
+      return;
+    }
     const room = rooms.get(code);
-    if (!room) return;
+    if (!room) {
+      cb({ error: 'Oda bulunamadı ya da süresi doldu.' });
+      return;
+    }
     const owner = io.sockets.sockets.get(room.ownerId);
-    if (owner) owner.emit('answer', { code, answer: data.answer });
+    if (owner) {
+      owner.emit('answer', { code, answer: data.answer });
+    }
     destroyRoom(code, false);
+    cb({ ok: true });
   });
 
   // Oda sahibinin bağlantısı koptuğunda odaları temizle

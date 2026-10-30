@@ -1,3 +1,2 @@
 qr yada kodla arkadaş eklenecek ama mesajlar 24 saat sonra silinecek ama kullanıcı isterse arkadaşını silebilecek bu özelliği ekle.
-
 qr oluştur sayfasında ki   Kamerası yoksa veya kod uzunsa, aşağıdaki metni kopyalayıp gönder.    yazıyı sil

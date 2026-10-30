@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>QRgram</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+<!-- Yalnızca sunucudan açıldığında yüklenir (oda kodu sinyalleşmesi); file:// ile açıldığında sessizce yok sayılır -->
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+  :root{
+    --bg:#0F1720;
+    --surface:#17212B;
+    --surface-2:#1D2833;
+    --line:#263140;
+    --text:#E8EDF2;
+    --muted:#8493A3;
+    --signal:#12b07c;
+    --signal-dim:#2E6E58;
+    --wait:#F2B85C;
+    --danger:#E27D6B;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%; overflow-x:hidden; background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif; overscroll-behavior:none;}
+  #app{max-width:480px; margin:0 auto; height:100vh; height:100dvh; display:flex; flex-direction:column;
+    background:var(--bg); position:relative; border-left:1px solid var(--line); border-right:1px solid var(--line);}
+  .screen{flex:1; display:flex; flex-direction:column; min-height:0;}
+  .hidden{display:none !important;}
+
+  .topbar{padding:18px 20px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px;}
+  .topbar .back{background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; padding:4px 6px; line-height:1;}
+  .wordmark{font-family:'Space Grotesk'; font-weight:700; font-size:20px; letter-spacing:-0.02em;}
+  .wordmark .dot{color:var(--signal);}
+  .topbar .sub{font-size:12px; color:var(--muted); font-family:'IBM Plex Mono';}
+  .icon-btn{background:none; border:none; color:var(--muted); font-size:17px; cursor:pointer; padding:4px 6px; line-height:1;}
+  .icon-btn.push-right{margin-left:auto;}
+  .avatar-btn{width:36px; height:36px; border-radius:50%; background:var(--surface-2); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk'; font-weight:600;
+    font-size:13px; color:var(--text); cursor:pointer; flex-shrink:0; padding:0;}
+  .avatar-btn:active{transform:scale(0.95);}
+  .profile-header{display:flex; align-items:center; gap:16px; padding:6px 0 16px;}
+  .profile-avatar-lg{width:60px; height:60px; border-radius:50%; background:var(--surface-2); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk'; font-weight:600;
+    font-size:22px; flex-shrink:0;}
+  .profile-name{font-weight:600; font-size:16px;}
+  .profile-mail{color:var(--muted); font-size:13px; font-family:'IBM Plex Mono'; margin-top:3px;}
+
+  /* Onboarding & lockscreen */
+  #onboarding, #lockscreen{align-items:center; justify-content:center; padding:32px; text-align:center; gap:18px;}
+  #onboarding .mark, #lockscreen .mark{font-family:'Space Grotesk'; font-weight:700; font-size:30px; letter-spacing:-0.02em;}
+  #onboarding .mark span{color:var(--signal);}
+  #onboarding p, #lockscreen p{color:var(--muted); font-size:14px; line-height:1.55; max-width:320px;}
+  .lock-icon{font-size:32px;}
+  input.name-input{width:100%; max-width:280px; background:var(--surface); border:1px solid var(--line);
+    color:var(--text); font-size:16px; padding:13px 16px; border-radius:10px; font-family:'IBM Plex Sans';}
+  input.name-input:focus{outline:none; border-color:var(--signal-dim);}
+  .btn{border:none; border-radius:10px; padding:13px 20px; font-size:15px; font-weight:600; cursor:pointer;
+    font-family:'IBM Plex Sans'; transition:transform .08s ease;}
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{background:var(--signal); color:#08211a;}
+  .btn-ghost{background:var(--surface-2); color:var(--text); border:1px solid var(--line);}
+  .btn-block{width:100%; max-width:280px;}
+  .btn[disabled]{opacity:.4; cursor:default;}
+  .error-text{color:var(--danger); font-size:13px; min-height:16px;}
+
+  /* Home / contact list */
+  #home .list{flex:1; overflow-y:auto; padding:6px 0;}
+  .contact-row{display:flex; align-items:center; gap:13px; padding:13px 20px; cursor:pointer; border-bottom:1px solid var(--line);}
+  .contact-row:active{background:var(--surface);}
+  .avatar{width:44px; height:44px; border-radius:50%; background:var(--surface-2); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk'; font-weight:600; font-size:16px; flex-shrink:0;}
+  .c-meta{flex:1; min-width:0;}
+  .c-name{font-weight:600; font-size:15px;}
+  .c-preview{font-size:13px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .c-dot{width:8px; height:8px; border-radius:50%; background:var(--line); flex-shrink:0;}
+  .c-dot.on{background:var(--signal); box-shadow:0 0 6px var(--signal);}
+  .empty-state{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:32px; text-align:center; color:var(--muted); gap:10px;}
+  .empty-state .big{font-size:15px; color:var(--text); font-weight:600;}
+  .fab{position:absolute; right:20px; bottom:calc(24px + env(safe-area-inset-bottom)); width:56px; height:56px; border-radius:50%; background:var(--signal);
+    color:#08211a; border:none; font-size:26px; cursor:pointer; box-shadow:0 6px 18px rgba(79,209,165,.35);
+    display:flex; align-items:center; justify-content:center;}
+
+  /* Pairing / settings body */
+  .scroll-body{flex:1; overflow-y:auto; padding:22px 20px 32px; display:flex; flex-direction:column; gap:18px;}
+  .choice-card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px;
+    cursor:pointer; display:flex; gap:14px; align-items:flex-start;}
+  .choice-card:active{background:var(--surface-2);}
+  .choice-icon{font-size:22px; width:34px; text-align:center; flex-shrink:0; padding-top:2px;}
+  .choice-title{font-weight:600; font-size:15px; margin-bottom:3px;}
+  .choice-desc{font-size:13px; color:var(--muted); line-height:1.45;}
+  .step-label{font-size:12px; color:var(--wait); font-family:'IBM Plex Mono'; letter-spacing:0.02em;}
+  .qr-box{background:#fff; border-radius:14px; padding:16px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:12px; width:100%; overflow:hidden;}
+  .qr-box canvas, .qr-box img{max-width:100%; height:auto; display:block;}
+  .qr-brand{display:flex; align-items:center; gap:8px; font-family:'Space Grotesk'; font-weight:700;
+    font-size:16px; letter-spacing:-0.02em; color:#101418; user-select:none; flex-shrink:0;}
+  .qr-brand svg{display:block; flex-shrink:0;}
+  .qr-brand .dot{color:#12b07c;}
+  .qr-holder{display:flex; align-items:center; justify-content:center;}
+  .qr-error{color:#333; font-size:13px; text-align:center; padding:20px; font-family:'IBM Plex Sans';}
+  textarea.code-area{width:100%; background:var(--surface); border:1px solid var(--line); color:var(--text);
+    font-family:'IBM Plex Mono'; font-size:12px; border-radius:10px; padding:12px; resize:vertical; min-height:80px;}
+  textarea.code-area:focus{outline:none; border-color:var(--signal-dim);}
+  .row{display:flex; gap:10px;}
+  .row .btn{flex:1;}
+  .hint{font-size:12.5px; color:var(--muted); line-height:1.5;}
+  .code-display{font-family:'IBM Plex Mono'; font-weight:600; font-size:clamp(20px, 8vw, 34px); letter-spacing:0.24em;
+    text-indent:0.24em; background:var(--surface-2); border:1px dashed var(--signal-dim); border-radius:14px;
+    padding:18px 10px; text-align:center; color:var(--signal); user-select:all;}
+  input.code-input{width:100%; background:var(--surface); border:1px solid var(--line); color:var(--text);
+    font-family:'IBM Plex Mono'; font-size:18px; letter-spacing:0.35em; text-indent:0.35em;
+    padding:13px 16px; border-radius:10px; text-align:center; text-transform:uppercase;}
+  input.code-input:focus{outline:none; border-color:var(--signal-dim);}
+  .divider-word{display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; margin:2px 0;}
+  .divider-word::before, .divider-word::after{content:''; flex:1; height:1px; background:var(--line);}
+  .scanner-container{position:relative; width:100%; border-radius:14px; overflow:hidden; background:#000; margin-top:10px; border:1px solid var(--line);}
+  .scanner-video-wrap{position:relative; width:100%; height:clamp(200px, 48vh, 300px); overflow:hidden; background:#000; display:flex; align-items:center; justify-content:center;}
+  video#scanVideo{width:100%; height:100%; object-fit:cover; display:block;}
+  .scanner-overlay{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none;}
+  .scanner-frame{width:190px; height:190px; border:2px solid var(--signal); border-radius:16px; position:relative; box-shadow:0 0 0 9999px rgba(0,0,0,0.52);}
+  .scanner-frame::before{content:''; position:absolute; top:-4px; left:-4px; width:22px; height:22px; border-top:4px solid var(--signal); border-left:4px solid var(--signal); border-top-left-radius:8px;}
+  .scanner-frame::after{content:''; position:absolute; bottom:-4px; right:-4px; width:22px; height:22px; border-bottom:4px solid var(--signal); border-right:4px solid var(--signal); border-bottom-right-radius:8px;}
+  .scanner-laser{position:absolute; left:6px; right:6px; height:2px; background:var(--signal); box-shadow:0 0 8px var(--signal); top:10px; animation:scannerLaser 2s infinite ease-in-out;}
+  @keyframes scannerLaser{
+    0%,100%{top:10px; opacity:0.6;}
+    50%{top:176px; opacity:1;}
+  }
+  .scanner-controls{padding:12px; display:flex; flex-direction:column; gap:10px; background:var(--surface);}
+  .scan-status{text-align:center; font-size:13px; color:var(--wait); font-family:'IBM Plex Mono';}
+  .pulse{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--wait);
+    animation:pulse 1.2s infinite ease-in-out; margin-right:6px;}
+  @keyframes pulse{0%,100%{opacity:.3;} 50%{opacity:1;}}
+  .qr-box img{max-width:100%; height:auto; display:block;}
+  .success-box{display:flex; flex-direction:column; align-items:center; gap:14px; padding:30px 10px; text-align:center;}
+  .success-box .check{width:52px; height:52px; border-radius:50%; background:var(--signal-dim); color:var(--signal);
+    display:flex; align-items:center; justify-content:center; font-size:26px;}
+  .settings-section{display:flex; flex-direction:column; gap:10px; padding-bottom:18px; border-bottom:1px solid var(--line);}
+  .settings-section:last-child{border-bottom:none; padding-bottom:0;}
+  .section-title{font-size:13px; color:var(--muted); font-weight:600;}
+
+  /* Chat screen */
+  #chat .topbar .wordmark{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  #chat .status-bar{padding:8px 12px; font-size:12px; font-family:'IBM Plex Mono'; text-align:center; border-bottom:1px solid var(--line);}
+  #chat .status-bar.on{color:var(--signal);}
+  #chat .status-bar.off{color:var(--danger);}
+  .messages{flex:1; overflow-y:auto; padding:16px 14px; display:flex; flex-direction:column; gap:8px;}
+  .bubble{max-width:76%; padding:9px 13px; border-radius:14px; font-size:14.5px; line-height:1.42; word-wrap:break-word;}
+  .bubble.me{align-self:flex-end; background:var(--signal-dim); color:#EAFBF4; border-bottom-right-radius:4px;}
+  .bubble.them{align-self:flex-start; background:var(--surface-2); border:1px solid var(--line); border-bottom-left-radius:4px;}
+  .bubble .t{display:block; font-size:10.5px; color:var(--muted); margin-top:4px; font-family:'IBM Plex Mono';}
+  .composer{display:flex; gap:10px; padding:12px 14px; padding-bottom:calc(12px + env(safe-area-inset-bottom));
+    border-top:1px solid var(--line); align-items:flex-end;}
+  .composer input{flex:1; min-width:0; background:var(--surface); border:1px solid var(--line); color:var(--text);
+    padding:11px 15px; border-radius:20px; font-size:16px; font-family:'IBM Plex Sans';}
+  .composer input:focus{outline:none; border-color:var(--signal-dim);}
+  .send-btn{width:42px; height:42px; border-radius:50%; background:var(--signal); border:none; color:#08211a;
+    font-size:16px; flex-shrink:0; cursor:pointer;}
+  .send-btn[disabled]{background:var(--surface-2); color:var(--muted);}
+  .reconnect-strip{padding:10px 14px; background:var(--surface); border-top:1px solid var(--line);
+    display:flex; align-items:center; gap:10px; font-size:13px; color:var(--muted);}
+  .reconnect-strip .btn{padding:8px 14px; font-size:13px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ONBOARDING -->
+  <section id="onboarding" class="screen">
+    <div class="mark">QRgram<span>.</span></div>
+    <div id="obBody" style="display:flex; flex-direction:column; align-items:center; gap:14px; width:100%;"></div>
+  </section>
+
+  <!-- LOCK SCREEN -->
+  <section id="lockscreen" class="screen hidden"></section>
+
+  <!-- HOME -->
+  <section id="home" class="screen hidden" style="position:relative;">
+    <div class="topbar">
+      <div class="wordmark">QRgram<span class="dot">.</span></div>
+      <button class="icon-btn push-right" id="lockIconBtn" title="Kilit ayarları">🔓</button>
+      <button class="avatar-btn" id="profileBtn" title="Profil ve ayarlar"></button>
+    </div>
+    <div class="list" id="contactList"></div>
+    <button class="fab" id="fabAdd" title="Yeni bağlantı">+</button>
+  </section>
+
+  <!-- PAIRING -->
+  <section id="pairing" class="screen hidden">
+    <div class="topbar">
+      <button class="back" id="pairBack">←</button>
+      <div class="wordmark" style="font-size:16px;">Yeni bağlantı</div>
+    </div>
+    <div class="scroll-body" id="pairBody"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="settings" class="screen hidden">
+    <div class="topbar">
+      <button class="back" id="settingsBack">←</button>
+      <div class="wordmark" style="font-size:16px;">Ayarlar</div>
+    </div>
+    <div class="scroll-body" id="settingsBody"></div>
+  </section>
+
+  <!-- CHAT -->
+  <section id="chat" class="screen hidden">
+    <div class="topbar">
+      <button class="back" id="chatBack">←</button>
+      <div class="wordmark" style="font-size:16px;" id="chatPeerName"></div>
+      <button class="icon-btn push-right" id="deletePeerBtn" title="Bu kişiyi sil">🗑</button>
+    </div>
+    <div class="status-bar" id="chatStatus"></div>
+    <div class="messages" id="messages"></div>
+    <div class="reconnect-strip hidden" id="reconnectStrip">
+      <span>Bağlantı kapalı, mesajlar yalnızca bu cihazda duruyor.</span>
+      <button class="btn btn-primary" id="reconnectBtn">Yeniden bağlan</button>
+    </div>
+    <div class="composer">
+      <input id="msgInput" placeholder="Mesaj yaz…" maxlength="2000">
+      <button class="send-btn" id="sendBtn">➤</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+function $id(id){ return document.getElementById(id); }
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+/* =====================================================================
+   INDEXEDDB LAYER
+   Stores: profile (id='me'), lockmeta (id='lock'), contacts (id=peerId),
+   messages (autoInc 'seq', indexed by peerId)
+   ===================================================================== */
+let db;
+function openDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('dogrudanDB', 1);
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains('profile')) d.createObjectStore('profile', { keyPath:'id' });
+      if(!d.objectStoreNames.contains('lockmeta')) d.createObjectStore('lockmeta', { keyPath:'id' });
+      if(!d.objectStoreNames.contains('contacts')) d.createObjectStore('contacts', { keyPath:'id' });
+      if(!d.objectStoreNames.contains('messages')){
+        const s = d.createObjectStore('messages', { keyPath:'seq', autoIncrement:true });
+        s.createIndex('byPeer', 'peerId', { unique:false });
+      }
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+function idbGet(store, key){
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).get(key);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbPut(store, val){
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readwrite').objectStore(store).put(val);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbGetAll(store){
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbGetAllByIndex(store, indexName, key){
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).index(indexName).getAll(key);
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbDelete(store, key){
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readwrite').objectStore(store).delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbDeleteByIndex(store, indexName, key){
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readwrite').objectStore(store).index(indexName).openCursor(IDBKeyRange.only(key));
+    req.onsuccess = () => {
+      const cur = req.result;
+      if(cur){ cur.delete(); cur.continue(); }
+      else resolve();
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/* =====================================================================
+   CRYPTO LAYER — optional password protection
+   PBKDF2(password, salt) -> AES-GCM key. Nothing is stored in plain text
+   once a password is set; forgetting the password means the old
+   messages can't be read back (there's no backdoor).
+   ===================================================================== */
+const UNLOCK_MAGIC = 'dogrudan-unlock-check';
+let cryptoKey = null; // in-memory only, never persisted
+
+function b64(bytes){
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let bin = '';
+  arr.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin);
+}
+function unb64(str){
+  const bin = atob(str);
+  const arr = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+async function deriveKey(password, saltB64){
+  const salt = unb64(saltB64);
+  const baseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt, iterations:150000, hash:'SHA-256' },
+    baseKey,
+    { name:'AES-GCM', length:256 },
+    false,
+    ['encrypt','decrypt']
+  );
+}
+async function encryptText(key, text){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipherBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, new TextEncoder().encode(text));
+  return { iv:b64(iv), cipher:b64(cipherBuf) };
+}
+async function decryptText(key, ivB64, cipherB64){
+  const plainBuf = await crypto.subtle.decrypt({ name:'AES-GCM', iv:unb64(ivB64) }, key, unb64(cipherB64));
+  return new TextDecoder().decode(plainBuf);
+}
+async function safeDecrypt(key, rec){
+  try{ return await decryptText(key, rec.iv, rec.cipher); } catch(e){ return '(çözülemedi)'; }
+}
+async function setupLock(password){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const saltB64 = b64(salt);
+  const key = await deriveKey(password, saltB64);
+  const enc = await encryptText(key, UNLOCK_MAGIC);
+  await idbPut('lockmeta', { id:'lock', enabled:true, salt:saltB64, iv:enc.iv, cipher:enc.cipher });
+  cryptoKey = key;
+}
+async function tryUnlock(password, meta){
+  try{
+    const key = await deriveKey(password, meta.salt);
+    const check = await decryptText(key, meta.iv, meta.cipher);
+    if(check === UNLOCK_MAGIC){ cryptoKey = key; return true; }
+    return false;
+  }catch(e){ return false; }
+}
+// Re-encrypts (or decrypts to plain) every stored contact & message when
+// the password is set for the first time, changed, or removed.
+async function reencryptAll(oldKey, newKey){
+  const allContacts = await idbGetAll('contacts');
+  for(const c of allContacts){
+    const name = c.enc ? await safeDecrypt(oldKey, c) : c.name;
+    if(newKey){
+      const enc = await encryptText(newKey, name);
+      await idbPut('contacts', { id:c.id, enc:true, iv:enc.iv, cipher:enc.cipher });
+    }else{
+      await idbPut('contacts', { id:c.id, enc:false, name });
+    }
+  }
+  const allMsgs = await idbGetAll('messages');
+  for(const m of allMsgs){
+    const text = m.enc ? await safeDecrypt(oldKey, m) : m.text;
+    if(newKey){
+      const enc = await encryptText(newKey, text);
+      await idbPut('messages', { seq:m.seq, peerId:m.peerId, from:m.from, ts:m.ts, enc:true, iv:enc.iv, cipher:enc.cipher });
+    }else{
+      await idbPut('messages', { seq:m.seq, peerId:m.peerId, from:m.from, ts:m.ts, enc:false, text });
+    }
+  }
+}
+
+/* ---- contacts (name may be encrypted) ---- */
+async function saveContactName(id, name){
+  if(cryptoKey){
+    const enc = await encryptText(cryptoKey, name);
+    await idbPut('contacts', { id, enc:true, iv:enc.iv, cipher:enc.cipher });
+  }else{
+    await idbPut('contacts', { id, enc:false, name });
+  }
+}
+async function getContactName(id){
+  const rec = await idbGet('contacts', id);
+  if(!rec) return null;
+  if(rec.enc) return cryptoKey ? await safeDecrypt(cryptoKey, rec) : '(kilitli)';
+  return rec.name;
+}
+async function getAllContacts(){
+  const rows = await idbGetAll('contacts');
+  const out = {};
+  for(const r of rows) out[r.id] = r.enc ? (cryptoKey ? await safeDecrypt(cryptoKey, r) : '(kilitli)') : r.name;
+  return out;
+}
+
+/* ---- messages (text may be encrypted) ---- */
+async function saveMessage(peerId, msg){
+  if(cryptoKey){
+    const enc = await encryptText(cryptoKey, msg.text);
+    await idbPut('messages', { peerId, from:msg.from, ts:msg.ts, enc:true, iv:enc.iv, cipher:enc.cipher });
+  }else{
+    await idbPut('messages', { peerId, from:msg.from, ts:msg.ts, enc:false, text:msg.text });
+  }
+}
+async function getMessagesForPeer(peerId){
+  const rows = await idbGetAllByIndex('messages', 'byPeer', peerId);
+  rows.sort((a,b) => a.seq - b.seq);
+  const out = [];
+  for(const r of rows){
+    const text = r.enc ? (cryptoKey ? await safeDecrypt(cryptoKey, r) : '(kilitli mesaj)') : r.text;
+    out.push({ from:r.from, text, ts:r.ts });
+  }
+  return out;
+}
+
+/* =====================================================================
+   SCREENS
+   ===================================================================== */
+const screens = { onboarding:$id('onboarding'), lockscreen:$id('lockscreen'), home:$id('home'),
+  pairing:$id('pairing'), settings:$id('settings'), chat:$id('chat') };
+function show(name){
+  Object.values(screens).forEach(s => s.classList.add('hidden'));
+  screens[name].classList.remove('hidden');
+}
+
+let me = null;
+let contacts_cache = {}; // unused placeholder removed below if not needed
+
+/* ---------- 24-hour message retention ---------- */
+const MESSAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
+// ts alanı şifrelenmez (düz saklanır), bu yüzden zaman bazlı temizlik şifre
+// açıkken de çalışır. Uygulama açılışında ve sonrasında 30 dakikada bir siler.
+async function purgeOldMessages(){
+  try{
+    const cutoff = Date.now() - MESSAGE_RETENTION_MS;
+    const all = await idbGetAll('messages');
+    let removed = 0;
+    for(const m of all){
+      if((m.ts || 0) < cutoff){
+        await idbDelete('messages', m.seq);
+        removed++;
+      }
+    }
+    if(removed > 0 && me && !$id('home').classList.contains('hidden')){
+      renderContactList();
+    }
+  }catch(err){ /* sessiz: temizlik başarısız olsa da uygulama çalışmaya devam eder */ }
+}
+
+/* ---------- boot ---------- */
+(async function boot(){
+  // Tarayıcı, disk dolduğunda "en iyi tahmin" verilerini (IndexedDB dahil)
+  // otomatik silebilir (eviction). Bu riski azaltmak için kalıcı depolama
+  // talep ediyoruz; kullanıcı izin verirse veriler tarayıcı tarafından
+  // otomatik silinemez.
+  try{
+    if(navigator.storage && navigator.storage.persist){
+      const granted = await navigator.storage.persist();
+      console.log('[QRgram] Kalıcı depolama:', granted ? 'granted' : 'denied');
+    }
+  }catch(e){}
+  db = await openDB();
+  purgeOldMessages();
+  setInterval(purgeOldMessages, 30 * 60 * 1000);
+  const profile = await idbGet('profile', 'me');
+  if(!profile){
+    renderObStepName();
+    show('onboarding');
+    return;
+  }
+  me = profile;
+  const meta = await idbGet('lockmeta', 'lock');
+  if(meta && meta.enabled){
+    renderLockScreen(meta);
+    show('lockscreen');
+  }else{
+    cryptoKey = null;
+    await start();
+  }
+})();
+
+/* ---------- onboarding ---------- */
+let obDraftName = null;
+let obDraftEmail = null;
+
+function renderObStepName(){
+  const body = $id('obBody');
+  body.innerHTML = `
+    <p>Mesajlar hiçbir sunucuya uğramaz — cihazdan cihaza gider.</p>
+    <p class="hint">Not: Uygulamayı sunucudan açtıysan, sunucu yalnızca eşleşmeyi kolaylaştırmak için (6 haneli oda kodu + WebRTC sinyali) bağlantı kurarken yardımcı olur. Mesajların kendisi asla sunucudan geçmez.</p>
+    <input id="nameInput" class="name-input" placeholder="Görünecek adın" maxlength="24" autocomplete="off">
+    <input id="emailInput" class="name-input" type="email" placeholder="E-posta adresin (ornek@mail.com)" maxlength="64" autocomplete="off">
+    <div class="error-text" id="obNameError"></div>
+    <button class="btn btn-primary btn-block" id="obNameNext">İleri</button>
+  `;
+  $id('obNameNext').addEventListener('click', () => {
+    const name = $id('nameInput').value.trim();
+    const email = $id('emailInput').value.trim();
+    const err = $id('obNameError');
+    if(!name){ err.textContent = 'Ad boş olamaz.'; return; }
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ err.textContent = 'Geçerli bir e-posta adresi gir (örn. ornek@mail.com).'; return; }
+    obDraftName = name;
+    obDraftEmail = email;
+    renderObStepLock();
+  });
+  $id('nameInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') $id('emailInput').focus(); });
+  $id('emailInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') $id('obNameNext').click(); });
+}
+
+function renderObStepLock(){
+  const body = $id('obBody');
+  body.innerHTML = `
+    <p>İstersen açılışa şifre koy. Koyarsan mesajların bu cihazda şifreli tutulur — şifreni unutursan eski mesajlara kimse (sen dahil) erişemez.</p>
+    <input id="lockPass1" type="password" class="name-input" placeholder="Şifre (opsiyonel)">
+    <input id="lockPass2" type="password" class="name-input" placeholder="Şifre (tekrar)">
+    <div class="error-text" id="obLockError"></div>
+    <button class="btn btn-primary btn-block" id="obSetLock">Şifre koy ve başla</button>
+    <button class="btn btn-ghost btn-block" id="obSkipLock">Atla, şifre kullanma</button>
+  `;
+  $id('obSetLock').addEventListener('click', async () => {
+    const p1 = $id('lockPass1').value, p2 = $id('lockPass2').value;
+    if(!p1){ $id('obLockError').textContent = 'Şifre boş olamaz — istemiyorsan Atla\'ya bas.'; return; }
+    if(p1 !== p2){ $id('obLockError').textContent = 'Şifreler uyuşmuyor.'; return; }
+    await idbPut('profile', { id:'me', name: obDraftName, email: obDraftEmail });
+    me = { id:'me', name: obDraftName, email: obDraftEmail };
+    await setupLock(p1);
+    await start();
+  });
+  $id('obSkipLock').addEventListener('click', async () => {
+    await idbPut('profile', { id:'me', name: obDraftName, email: obDraftEmail });
+    me = { id:'me', name: obDraftName, email: obDraftEmail };
+    await idbPut('lockmeta', { id:'lock', enabled:false });
+    cryptoKey = null;
+    await start();
+  });
+}
+
+/* ---------- lock screen (returning users) ---------- */
+function renderLockScreen(meta){
+  const scr = $id('lockscreen');
+  scr.innerHTML = `
+    <div class="lock-icon">🔒</div>
+    <div class="mark">${escapeHtml(me.name)}</div>
+    <p>Devam etmek için şifreni gir.</p>
+    <input id="unlockPass" type="password" class="name-input" placeholder="Şifre">
+    <div class="error-text" id="unlockError"></div>
+    <button class="btn btn-primary btn-block" id="unlockBtn">Aç</button>
+  `;
+  async function attempt(){
+    const pass = $id('unlockPass').value;
+    const ok = await tryUnlock(pass, meta);
+    if(ok) await start();
+    else $id('unlockError').textContent = 'Şifre yanlış.';
+  }
+  $id('unlockBtn').addEventListener('click', attempt);
+  $id('unlockPass').addEventListener('keydown', (e) => { if(e.key === 'Enter') attempt(); });
+}
+
+/* ---------- home ---------- */
+async function start(){
+  $id('profileBtn').textContent = initials(me.name);
+  await updateLockIcon();
+  await renderContactList();
+  show('home');
+}
+
+async function updateLockIcon(){
+  const meta = await idbGet('lockmeta', 'lock');
+  $id('lockIconBtn').textContent = (meta && meta.enabled) ? '🔒' : '🔓';
+}
+
+function initials(name){ return (name || '?').trim().slice(0,2).toUpperCase(); }
+
+async function renderContactList(){
+  const list = $id('contactList');
+  const contactMap = await getAllContacts();
+  const ids = Object.keys(contactMap);
+  if(ids.length === 0){
+    list.innerHTML = '<div class="empty-state"><div class="big">Henüz kimse yok</div><div>Sağ alttaki + ile bağlantı kur: karekod veya (sunucudan açtıysan) 6 haneli oda kodu ile.</div></div>';
+    return;
+  }
+  list.innerHTML = '';
+  for(const id of ids){
+    const name = contactMap[id];
+    const msgs = await getMessagesForPeer(id);
+    const last = msgs[msgs.length - 1];
+    const row = document.createElement('div');
+    row.className = 'contact-row';
+    row.innerHTML = `
+      <div class="avatar">${initials(name)}</div>
+      <div class="c-meta">
+        <div class="c-name">${escapeHtml(name)}</div>
+        <div class="c-preview">${last ? escapeHtml(last.text) : 'Henüz mesaj yok'}</div>
+      </div>
+      <div class="c-dot ${connStatus[id]==='on' ? 'on' : ''}"></div>`;
+    row.addEventListener('click', () => openChat(id));
+    list.appendChild(row);
+  }
+}
+
+$id('fabAdd').addEventListener('click', () => openPairing());
+$id('pairBack').addEventListener('click', () => { disconnectSignaling(); teardownPairingMedia(); show('home'); renderContactList(); });
+$id('chatBack').addEventListener('click', () => { show('home'); renderContactList(); });
+$id('lockIconBtn').addEventListener('click', () => renderSettingsScreen());
+$id('settingsBack').addEventListener('click', () => show('home'));
+
+/* =====================================================================
+   WEBRTC PAIRING (unchanged logic, now feeding the IndexedDB layer)
+   ===================================================================== */
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' }
+  ]
+};
+let pc = null, dc = null, activePeerId = null;
+let connStatus = {}; // in-memory only, resets on reload
+
+function waitIceComplete(peerConn){
+  return new Promise(resolve => {
+    if(peerConn.iceGatheringState === 'complete') return resolve();
+    let timer;
+    const onchange = () => {
+      if(peerConn.iceGatheringState === 'complete'){
+        clearTimeout(timer);
+        peerConn.removeEventListener('icegatheringstatechange', onchange);
+        resolve();
+      }
+    };
+    peerConn.addEventListener('icegatheringstatechange', onchange);
+    // STUN genel IP adaylarının toplanabilmesi için 5 sn bekle
+    timer = setTimeout(() => {
+      peerConn.removeEventListener('icegatheringstatechange', onchange);
+      resolve();
+    }, 5000);
+  });
+}
+
+// Keeps the SDP small for QR while strictly prioritizing public (srflx/relay) IP candidates
+// so cross-network (WiFi <-> Cellular) P2P connections can successfully establish.
+function trimSdpCandidates(sdpText, maxCandidates = 6){
+  const lines = sdpText.split(/\r?\n/);
+  const srflx = [];
+  const host = [];
+  const otherLines = [];
+
+  for(const line of lines){
+    if(line.startsWith('a=candidate:')){
+      const parts = line.split(' ');
+      const transport = (parts[2] || '').toLowerCase();
+      const addr = parts[4] || '';
+      const isIPv6 = addr.includes(':');
+      if(transport !== 'udp' || isIPv6) continue;
+
+      const typeIdx = parts.indexOf('typ');
+      const candType = typeIdx !== -1 ? parts[typeIdx + 1] : '';
+      if(candType === 'srflx' || candType === 'relay'){
+        srflx.push(line);
+      } else {
+        host.push(line);
+      }
+    } else {
+      otherLines.push(line);
+    }
+  }
+
+  // En kritik adaylar STUN'dan dönen genel IP (srflx) adaylarıdır. Önce srflx, ardından host adayları eklenir.
+  const selectedCandidates = [...srflx, ...host].slice(0, maxCandidates);
+
+  const out = [];
+  let candidatesAdded = false;
+  for(const line of lines){
+    if(line.startsWith('a=candidate:')){
+      if(!candidatesAdded){
+        out.push(...selectedCandidates);
+        candidatesAdded = true;
+      }
+    } else {
+      out.push(line);
+    }
+  }
+  return out.join('\r\n');
+}
+function encodePayload(obj){ return LZString.compressToEncodedURIComponent(JSON.stringify(obj)); }
+function decodePayload(str){
+  const json = LZString.decompressFromEncodedURIComponent(str.trim());
+  if(!json) throw new Error('Kod okunamadı');
+  return JSON.parse(json);
+}
+
+function setupDataChannel(channel, peerId, remoteName){
+  dc = channel;
+  activePeerId = peerId;
+  channel.onopen = async () => {
+    connStatus[peerId] = 'on';
+    const existing = await getContactName(peerId);
+    const finalName = remoteName || existing || 'Bilinmeyen';
+    await saveContactName(peerId, finalName);
+    onPairingSuccess(peerId, finalName);
+    if(currentChatId === peerId) updateChatStatus('on');
+  };
+  channel.onclose = () => {
+    connStatus[peerId] = 'off';
+    if(currentChatId === peerId) updateChatStatus('off');
+    renderContactList();
+  };
+  channel.onmessage = async (e) => {
+    let data;
+    try{ data = JSON.parse(e.data); } catch(err){ return; }
+    const msg = { from:'them', text:data.text, ts:Date.now() };
+    await saveMessage(peerId, msg);
+    if(currentChatId === peerId) appendBubble(msg);
+    await renderContactList();
+  };
+}
+
+function attachIceDebug(peerConn, statusElId){
+  const label = { new:'başlıyor', checking:'bağlanıyor…', connected:'bağlandı ✓', completed:'bağlandı ✓',
+    failed:'başarısız ✗ — ağlarınız birbirine ulaşamıyor olabilir, QR\'ı yeniden oluşturup deneyin',
+    disconnected:'bağlantı koptu', closed:'kapandı' };
+  peerConn.addEventListener('iceconnectionstatechange', () => {
+    const el = document.getElementById(statusElId);
+    if(el) el.textContent = 'Durum: ' + (label[peerConn.iceConnectionState] || peerConn.iceConnectionState);
+  });
+}
+async function buildOffer(reuseId, forQr = false){
+  pc = new RTCPeerConnection(RTC_CONFIG);
+  const tempId = reuseId || (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now());
+  const channel = pc.createDataChannel('chat');
+  setupDataChannel(channel, tempId, null);
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitIceComplete(pc);
+  const sdp = forQr ? trimSdpCandidates(pc.localDescription.sdp, 6) : pc.localDescription.sdp;
+  const trimmed = { type: pc.localDescription.type, sdp };
+  return { payload:{ t:'offer', id:tempId, n:me.name, sdp:trimmed }, id:tempId };
+}
+async function buildAnswer(offerPayload, forQr = false){
+  pc = new RTCPeerConnection(RTC_CONFIG);
+  pc.ondatachannel = (e) => setupDataChannel(e.channel, offerPayload.id, offerPayload.n);
+  await pc.setRemoteDescription(offerPayload.sdp);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  await waitIceComplete(pc);
+  const sdp = forQr ? trimSdpCandidates(pc.localDescription.sdp, 6) : pc.localDescription.sdp;
+  const trimmed = { type: pc.localDescription.type, sdp };
+  return { t:'answer', id:offerPayload.id, n:me.name, sdp:trimmed };
+}
+async function applyAnswer(answerPayload){
+  await pc.setRemoteDescription(answerPayload.sdp);
+  if(answerPayload.n) await saveContactName(answerPayload.id, answerPayload.n);
+}
+
+/* =====================================================================
+   SIGNALING TRANSPORT (optional) — 6-character room codes.
+   Only active when the app is served from the Node/Socket.IO server
+   (http/https + /socket.io/socket.io.js loaded). From file:// everything
+   falls back to the pure QR flow; server never sees chat messages,
+   only the SDP needed to establish the connection.
+   ===================================================================== */
+const SERVED_HTTP = location.protocol === 'http:' || location.protocol === 'https:';
+const SIGNALLING_OK = SERVED_HTTP && (typeof io !== 'undefined');
+const ROOM_TTL_SECONDS = 5 * 60;
+
+let signalingSocket = null;
+let roomTtlTimer = null;
+let roomCode = null;
+let roomAnswerHandled = false;
+
+function normalizeRoomCode(raw){
+  if(typeof raw !== 'string') return '';
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function disconnectSignaling(){
+  if(roomTtlTimer){ clearInterval(roomTtlTimer); roomTtlTimer = null; }
+  roomCode = null;
+  if(signalingSocket){
+    try{ signalingSocket.disconnect(); }catch(e){}
+    signalingSocket = null;
+  }
+}
+
+function connectSignaling(){
+  return new Promise((resolve, reject) => {
+    if(!SIGNALLING_OK){
+      reject(new Error('Oda kodu için sinyal servisi kullanılamıyor. Karekod yöntemini kullan.'));
+      return;
+    }
+    if(signalingSocket && signalingSocket.connected){ resolve(signalingSocket); return; }
+    if(signalingSocket){ try{ signalingSocket.disconnect(); }catch(e){} signalingSocket = null; }
+    const sock = io({ timeout: 6000, reconnection: true });
+    signalingSocket = sock;
+    let settled = false;
+    const finish = (err) => {
+      if(settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if(err){
+        try{ sock.disconnect(); }catch(e){}
+        signalingSocket = null;
+        reject(err);
+      }else{
+        resolve(sock);
+      }
+    };
+    const timer = setTimeout(() => finish(new Error('Sunucuya ulaşılamadı. İnternet bağlantını kontrol et ya da karekod yöntemini kullan.')), 6000);
+    sock.once('connect', () => finish(null));
+    sock.once('connect_error', () => finish(new Error('Sunucuya ulaşılamadı. İnternet bağlantını kontrol et ya da karekod yöntemini kullan.')));
+  });
+}
+
+function emitWithTimeout(sock, event, payload, ms){
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('Sunucudan yanıt gelmedi.')), ms);
+    sock.emit(event, payload, (res) => { clearTimeout(t); resolve(res); });
+  });
+}
+
+function isValidSdpPayload(obj, expectedType){
+  if(!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const sdp = obj.sdp;
+  if(!sdp || typeof sdp !== 'object' || Array.isArray(sdp)) return false;
+  if(typeof sdp.type !== 'string' || typeof sdp.sdp !== 'string' || !sdp.sdp) return false;
+  if(expectedType && sdp.type !== expectedType) return false;
+  if(obj.n !== undefined && obj.n !== null && typeof obj.n !== 'string') return false;
+  return true;
+}
+
+function renderSignalingError(body, msg, retryFn){
+  body.innerHTML = `
+    <div class="step-label">Hata</div>
+    <p class="hint" style="color:var(--danger)">${escapeHtml(msg || 'Sunucuya ulaşılamadı.')}</p>
+    <div class="row">
+      <button class="btn btn-ghost" id="retrySignalingBtn" style="flex:1;">Tekrar dene</button>
+      <button class="btn btn-primary" id="qrFallbackBtn" style="flex:1;">Karekod ile bağlan</button>
+    </div>`;
+  $id('retrySignalingBtn').addEventListener('click', retryFn);
+  $id('qrFallbackBtn').addEventListener('click', () => startInviteFlow());
+}
+
+async function startRoomHostFlow(){
+  const body = $id('pairBody');
+  body.innerHTML = '<div class="step-label">bağlantı hazırlanıyor…</div>';
+  let built;
+  try{ built = await buildOffer(reconnectTargetId, false); }
+  catch(err){
+    body.innerHTML = `<div class="step-label">Hata</div><p class="hint">Bağlantı hazırlanamadı: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+  let sock;
+  try{ sock = await connectSignaling(); }
+  catch(err){ renderSignalingError(body, err.message, () => startRoomHostFlow()); return; }
+  let res;
+  try{ res = await emitWithTimeout(sock, 'create-room', built.payload, 10000); }
+  catch(err){ renderSignalingError(body, err.message, () => startRoomHostFlow()); return; }
+  if(!res || res.error){ renderSignalingError(body, res.error, () => startRoomHostFlow()); return; }
+
+  roomCode = normalizeRoomCode(res.code);
+  roomAnswerHandled = false;
+  sock.off('answer'); sock.off('room-expired'); sock.off('disconnect');
+  sock.on('answer', handleRoomAnswer);
+  sock.on('room-expired', handleRoomExpired);
+  sock.on('disconnect', handleSignalingDrop);
+
+  body.innerHTML = `
+    <div class="step-label">bu kodu karşındakine söyle</div>
+    <div class="code-display" id="roomCodeBox">${escapeHtml(roomCode)}</div>
+    <div class="row"><button class="btn btn-ghost" id="copyRoomCodeBtn" style="flex:1;">Kodu kopyala</button></div>
+    <div class="hint">Karşındaki QRgram'da <b>Kodu gir</b> bölümüne bu kodu yazacak. Kod <span id="roomTtl">5:00</span> sonra geçersiz olur.</div>
+    <div class="divider-word">cevap bekleniyor</div>
+    <div class="scan-status"><span class="pulse"></span>Bağlanmayı bekliyor…</div>
+    <div class="scan-status" id="iceState"></div>
+    <div id="pairExtra"></div>`;
+  attachIceDebug(pc, 'iceState');
+  $id('copyRoomCodeBtn').addEventListener('click', () => copyText(roomCode, $id('copyRoomCodeBtn')));
+  startRoomCountdown();
+}
+
+async function handleRoomAnswer(data){
+  if(!roomCode || !data || normalizeRoomCode(data.code) !== roomCode) return;
+  if(roomAnswerHandled) return;
+  roomAnswerHandled = true;
+  if(!isValidSdpPayload(data.answer, 'answer')){
+    const el = $id('pairExtra');
+    if(el) el.innerHTML = '<p class="hint" style="color:var(--danger)">Geçersiz cevap alındı.</p>';
+    return;
+  }
+  try{ await applyAnswer(data.answer); }
+  catch(err){
+    const el = $id('pairExtra');
+    if(el) el.innerHTML = `<p class="hint" style="color:var(--danger)">Cevap uygulanamadı: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function handleRoomExpired(){
+  stopRoomCountdown();
+  roomCode = null;
+  const el = $id('pairExtra');
+  if(el){
+    el.innerHTML = `
+      <p class="hint" style="color:var(--danger)">Kodun süresi doldu.</p>
+      <div class="row"><button class="btn btn-primary" id="regenRoomCodeBtn" style="flex:1;">Yeni kod üret</button></div>`;
+    $id('regenRoomCodeBtn').addEventListener('click', () => startRoomHostFlow());
+  }
+}
+
+function handleSignalingDrop(){
+  if(!roomCode) return;
+  if(!document.getElementById('roomCodeBox')) return;
+  roomCode = null;
+  stopRoomCountdown();
+  const el = $id('pairExtra');
+  if(el){
+    el.innerHTML = `
+      <p class="hint" style="color:var(--danger)">Sunucuyla bağlantı koptu; kod geçerliliğini yitirdi.</p>
+      <div class="row"><button class="btn btn-primary" id="regenRoomCodeBtn" style="flex:1;">Tekrar dene (yeni kod)</button></div>`;
+    $id('regenRoomCodeBtn').addEventListener('click', () => startRoomHostFlow());
+  }
+}
+
+function startRoomCountdown(){
+  stopRoomCountdown();
+  const ttlEl = $id('roomTtl');
+  let remaining = ROOM_TTL_SECONDS;
+  roomTtlTimer = setInterval(() => {
+    remaining--;
+    if(ttlEl && document.body.contains(ttlEl)){
+      ttlEl.textContent = Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0');
+    }
+    if(remaining <= 0) stopRoomCountdown();
+  }, 1000);
+}
+function stopRoomCountdown(){
+  if(roomTtlTimer){ clearInterval(roomTtlTimer); roomTtlTimer = null; }
+}
+
+async function startRoomJoinFlow(){
+  const body = $id('pairBody');
+  body.innerHTML = `
+    <div class="step-label">davet kodunu gir</div>
+    <input class="code-input" id="joinCodeInput" placeholder="6 HANELİ KOD" maxlength="12" autocomplete="off" spellcheck="false">
+    <div class="hint">Karşı taraf <b>Kod oluştur</b> ekranında gördüğü 6 haneli kodu sana söyleyecek.</div>
+    <div class="error-text" id="joinCodeError"></div>
+    <div class="row"><button class="btn btn-primary" id="joinGoBtn" style="flex:1;">Bağlan</button></div>
+    <div id="pairExtra"></div>
+    <div class="row"><button class="btn btn-ghost" id="joinQrFallbackBtn" style="flex:1;">Karekod ile bağlan</button></div>`;
+  $id('joinQrFallbackBtn').addEventListener('click', () => startJoinFlow());
+  const input = $id('joinCodeInput');
+  input.addEventListener('input', () => { input.value = input.value.toUpperCase(); });
+  input.focus();
+
+  async function attemptJoin(){
+    const errEl = $id('joinCodeError'), btn = $id('joinGoBtn');
+    if(!errEl || !btn) return;
+    errEl.textContent = '';
+    const code = normalizeRoomCode(input.value);
+    if(code.length !== 6){ errEl.textContent = 'Kod 6 karakter olmalı (harf ve rakam).'; return; }
+    btn.disabled = true;
+    btn.textContent = 'Bağlanıyor…';
+    let sock;
+    try{ sock = await connectSignaling(); }
+    catch(err){ errEl.textContent = err.message; btn.disabled = false; btn.textContent = 'Bağlan'; return; }
+    let res;
+    try{ res = await emitWithTimeout(sock, 'join-room', code, 10000); }
+    catch(err){ errEl.textContent = err.message; btn.disabled = false; btn.textContent = 'Bağlan'; return; }
+    if(!res || res.error || !isValidSdpPayload(res.offer, 'offer')){
+      errEl.textContent = (res && res.error) || 'Bu kod hatalı ya da süresi dolmuş.';
+      btn.disabled = false; btn.textContent = 'Bağlan';
+      return;
+    }
+    let answerPayload;
+    try{ answerPayload = await buildAnswer(res.offer, false); }
+    catch(err){
+      errEl.textContent = 'Bağlantı kurulamadı: ' + err.message;
+      btn.disabled = false; btn.textContent = 'Bağlan';
+      return;
+    }
+    try{ await emitWithTimeout(sock, 'answer', { code, answer: answerPayload }, 10000); }
+    catch(err){
+      errEl.textContent = err.message;
+      btn.disabled = false; btn.textContent = 'Bağlan';
+      return;
+    }
+    disconnectSignaling(); // cevap iletildi, sinyal sunucusuna gerek kalmadı
+    body.innerHTML = `
+      <div class="divider-word">bağlanıyor</div>
+      <div class="scan-status"><span class="pulse"></span>Karşı tarafın onayı bekleniyor…</div>
+      <div class="scan-status" id="iceState"></div>
+      <div class="row"><button class="btn btn-ghost" id="joinRetryBtn" style="flex:1;">Yeniden dene</button></div>`;
+    attachIceDebug(pc, 'iceState');
+    $id('joinRetryBtn').addEventListener('click', () => startRoomJoinFlow());
+  }
+  $id('joinGoBtn').addEventListener('click', attemptJoin);
+  input.addEventListener('keydown', (e) => { if(e.key === 'Enter') attemptJoin(); });
+}
+
+/* ---------- pairing UI ---------- */
+let pairScanStream = null, pairScanRAF = null, reconnectTargetId = null;
+let activeScanHolder = null;
+
+function teardownPairingMedia(){
+  if(pairScanRAF){ cancelAnimationFrame(pairScanRAF); pairScanRAF = null; }
+  if(pairScanStream){ pairScanStream.getTracks().forEach(t => t.stop()); pairScanStream = null; }
+  if(activeScanHolder){ activeScanHolder.remove(); activeScanHolder = null; }
+}
+function openPairing(reuseId){
+  reconnectTargetId = reuseId || null;
+  renderPairChoice();
+  show('pairing');
+}
+function renderPairChoice(){
+  const body = $id('pairBody');
+  body.innerHTML = '';
+  if(SIGNALLING_OK){
+    const roomHost = document.createElement('div');
+    roomHost.className = 'choice-card';
+    roomHost.innerHTML = `<div class="choice-icon">⌗</div><div><div class="choice-title">Kod oluştur</div><div class="choice-desc">Sen davet edersin. 6 haneli bir kod alırsın; karşındaki bu kodu girer.</div></div>`;
+    roomHost.addEventListener('click', () => startRoomHostFlow());
+    const roomJoin = document.createElement('div');
+    roomJoin.className = 'choice-card';
+    roomJoin.innerHTML = `<div class="choice-icon">⌂</div><div><div class="choice-title">Kodu gir</div><div class="choice-desc">Karşındakinin sana verdiği 6 haneli kodu yaz, bağlantı kurulur.</div></div>`;
+    roomJoin.addEventListener('click', () => startRoomJoinFlow());
+    body.appendChild(roomHost);
+    body.appendChild(roomJoin);
+    const div = document.createElement('div');
+    div.className = 'divider-word';
+    div.textContent = 'veya karekod ile';
+    body.appendChild(div);
+  }
+  const invite = document.createElement('div');
+  invite.className = 'choice-card';
+  invite.innerHTML = `<div class="choice-icon">▦</div><div><div class="choice-title">Karekod oluştur</div><div class="choice-desc">Sen davet edersin. Karşındaki kendi kamerasıyla ekranını okutur.</div></div>`;
+  invite.addEventListener('click', () => startInviteFlow());
+  const join = document.createElement('div');
+  join.className = 'choice-card';
+  join.innerHTML = `<div class="choice-icon">▢</div><div><div class="choice-title">Karekod okut</div><div class="choice-desc">Karşındakinin ekranındaki kodu kameranla okut ya da yapıştır.</div></div>`;
+  join.addEventListener('click', () => startJoinFlow());
+  body.appendChild(invite);
+  body.appendChild(join);
+}
+
+async function startInviteFlow(){
+  const body = $id('pairBody');
+  body.innerHTML = '<div class="step-label">1 / 2 — kod hazırlanıyor…</div>';
+  let built;
+  try{ built = await buildOffer(reconnectTargetId, true); }
+  catch(err){ body.innerHTML = `<div class="step-label">Hata</div><p class="hint">Kod oluşturulamadı: ${escapeHtml(err.message)}</p>`; return; }
+  const code = encodePayload(built.payload);
+  body.innerHTML = `
+    <div class="qr-box" id="qrOut"></div>
+    <div class="row" style="margin-top:18px;"><button class="btn btn-ghost" id="copyOfferBtn" style="flex:1;">Kodu kopyala</button></div>
+    <div class="divider-word">sonra</div>
+    <div class="step-label">2 / 2 — karşındakinin cevap kodunu al</div>
+    <textarea class="code-area" id="answerPaste" placeholder="Cevap kodunu buraya yapıştır…"></textarea>
+    <div class="row">
+      <button class="btn btn-ghost" id="scanAnswerBtn" style="flex:1;">Kamerayla oku</button>
+      <button class="btn btn-primary" id="submitAnswerBtn" style="flex:1;">Bağlan</button>
+    </div>
+    <div class="scan-status" id="iceState"></div>
+    <div id="pairExtra"></div>
+  `;
+  renderQR($id('qrOut'), code);
+  attachIceDebug(pc, 'iceState');
+  $id('copyOfferBtn').addEventListener('click', () => copyText(code, $id('copyOfferBtn')));
+  $id('scanAnswerBtn').addEventListener('click', () => openCameraFor((text) => {
+    $id('answerPaste').value = text;
+    $id('submitAnswerBtn').click();
+  }));
+  $id('submitAnswerBtn').addEventListener('click', async () => {
+    const raw = $id('answerPaste').value;
+    if(!raw.trim()) return;
+    try{ await applyAnswer(decodePayload(raw)); }
+    catch(err){ $id('pairExtra').innerHTML = `<p class="hint" style="color:var(--danger)">Kod geçersiz: ${escapeHtml(err.message)}</p>`; }
+  });
+}
+
+async function startJoinFlow(){
+  const body = $id('pairBody');
+  body.innerHTML = `
+    <div class="step-label">1 / 2 — davet kodunu al</div>
+    <textarea class="code-area" id="offerPaste" placeholder="Karşındakinin kodunu buraya yapıştır…"></textarea>
+    <div class="row">
+      <button class="btn btn-ghost" id="scanOfferBtn" style="flex:1;">Kamerayla oku</button>
+      <button class="btn btn-primary" id="submitOfferBtn" style="flex:1;">Devam et</button>
+    </div>
+    <div id="pairExtra"></div>
+  `;
+  $id('scanOfferBtn').addEventListener('click', () => openCameraFor((text) => {
+    $id('offerPaste').value = text;
+    $id('submitOfferBtn').click();
+  }));
+  $id('submitOfferBtn').addEventListener('click', async () => {
+    const raw = $id('offerPaste').value;
+    if(!raw.trim()) return;
+    let offerPayload;
+    try{ offerPayload = decodePayload(raw); }
+    catch(err){ $id('pairExtra').innerHTML = `<p class="hint" style="color:var(--danger)">Kod geçersiz: ${escapeHtml(err.message)}</p>`; return; }
+    let answerPayload;
+    try{ answerPayload = await buildAnswer(offerPayload, true); }
+    catch(err){ $id('pairExtra').innerHTML = `<p class="hint" style="color:var(--danger)">Cevap oluşturulamadı: ${escapeHtml(err.message)}</p>`; return; }
+    const code = encodePayload(answerPayload);
+    body.innerHTML = `
+      <div class="step-label">2 / 2 — bu cevap kodunu geri götür</div>
+      <div class="qr-box" id="qrOut"></div>
+      <div class="hint">Karşındaki bu kodu okutunca veya yapıştırınca bağlantı kurulacak.</div>
+      <div class="row"><button class="btn btn-ghost" id="copyAnswerBtn" style="flex:1;">Kodu kopyala</button></div>
+      <div class="scan-status"><span class="pulse"></span>Bağlantı bekleniyor…</div>
+      <div class="scan-status" id="iceState"></div>
+    `;
+    renderQR($id('qrOut'), code);
+    attachIceDebug(pc, 'iceState');
+    $id('copyAnswerBtn').addEventListener('click', () => copyText(code, $id('copyAnswerBtn')));
+  });
+}
+
+let barcodeDetector = null;
+if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+  try {
+    barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+  } catch(e) {
+    barcodeDetector = null;
+  }
+}
+
+function playScanBeep(){
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if(!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
+  }catch(e){}
+}
+
+// QRgram logosu: QR'ın ÜSTÜNDE ayrı bir bantta durur, karekodun üzerine
+// hiçbir şekilde binmez; tarama hassasiyeti veya quiet zone etkilenmez.
+const QR_BRAND_HTML =
+  '<div class="qr-brand" aria-hidden="true">' +
+    '<svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+      // üç finder köşesi
+      '<g fill="#12b07c">' +
+        '<rect x="1" y="1" width="8" height="8" rx="2"/>' +
+        '<rect x="15" y="1" width="8" height="8" rx="2"/>' +
+        '<rect x="1" y="15" width="8" height="8" rx="2"/>' +
+        '<rect x="12" y="12" width="3" height="3" rx="0.75"/>' +
+        '<rect x="17" y="12" width="3" height="3" rx="0.75"/>' +
+        '<rect x="12" y="17" width="3" height="3" rx="0.75"/>' +
+        '<rect x="17" y="17" width="3" height="3" rx="0.75"/>' +
+      '</g>' +
+      '<g fill="#fff">' +
+        '<rect x="3" y="3" width="4" height="4" rx="1"/>' +
+        '<rect x="17" y="3" width="4" height="4" rx="1"/>' +
+        '<rect x="3" y="17" width="4" height="4" rx="1"/>' +
+      '</g>' +
+      '<g fill="#12b07c">' +
+        '<rect x="4.2" y="4.2" width="1.6" height="1.6" rx="0.4"/>' +
+        '<rect x="18.2" y="4.2" width="1.6" height="1.6" rx="0.4"/>' +
+        '<rect x="4.2" y="18.2" width="1.6" height="1.6" rx="0.4"/>' +
+      '</g>' +
+    '</svg>' +
+    'QRgram<span class="dot">.</span>' +
+  '</div>';
+
+function renderQR(container, text){
+  // Karekodu kapsayıcının gerçek iç genişliğine sığdır. Daha önce boyut yalnız
+  // pencere genişliğinden hesaplanıyordu; dar pencerelerde QR kutusundan
+  // taşıp (flex ortalama nedeniyle iki yönlü) üstünde/altındaki yazıları
+  // kapatıyordu.
+  const inner = container.clientWidth
+    ? container.clientWidth - 32            // .qr-box iç padding'i (16px x 2)
+    : Math.max(260, window.innerWidth - 60);
+  const size = Math.min(360, Math.max(200, inner));
+  // Marka bandı + QR'ın kendisi ayrı alt kapsayıcıda: logo QR'ın üzerine asla binmez.
+  container.innerHTML = QR_BRAND_HTML + '<div class="qr-holder"></div>';
+  const holder = container.querySelector('.qr-holder');
+  const level = QRCode.CorrectLevel.L;
+  try{
+    new QRCode(holder, {
+      text,
+      width: size,
+      height: size,
+      correctLevel: level
+    });
+    lastRenderedQR = { container, text };
+    // qrcode.js, kapsayıcıya `title` olarak karekodun HAM içeriğini (uzun
+    // sıkıştırılmış metin) yazar; fare üstte durunca devasa tooltip
+    // tüm düzenin üstüne biniyor. Onu temizliyoruz.
+    holder.removeAttribute('title');
+    holder.querySelectorAll('[title]').forEach(el => el.removeAttribute('title'));
+    // Boyutu inline CSS ile de kilidleyelim: qrcode.js yalnızca canvas
+    // attribute'larını ayarlıyor; bazı tarayıcı/zoom kombinasyonlarında
+    // karekod kutudan taşıp etrafındaki içeriklerin üstüne biner.
+    // Inline max sınırları bu taşımayı her durumda engeller.
+    // Sabit boyut: canvas'a yüzde + aspect-ratio vermeyelim; esnek kapsayıcılarda
+    // orantısız büyüyüp kutuya taşıyor. Sığdırma size hesabından +
+    // resize'da yeniden oluşturmadan geliyor.
+    const cap = Math.max(200, size);
+    holder.querySelectorAll('canvas, img').forEach(el => {
+      el.style.width = cap + 'px';
+      el.style.height = cap + 'px';
+      el.style.maxWidth = '100%';
+    });
+  } catch(err){
+    lastRenderedQR = null;
+    container.innerHTML = '<div class="qr-error">Kod çok uzun, karekoda sığmadı. Metin kodunu kopyalayıp gönder.</div>';
+  }
+}
+
+// Pencere boyutu / yönlendirme değişince karekodu yeniden sığdır (responsive).
+let lastRenderedQR = null;
+let qrResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(qrResizeTimer);
+  qrResizeTimer = setTimeout(() => {
+    if(!lastRenderedQR) return;
+    const out = lastRenderedQR.container;
+    if(out && out.isConnected && $id('qrOut') === out) renderQR(out, lastRenderedQR.text);
+    else lastRenderedQR = null;
+  }, 180);
+});
+function copyText(text, btn){
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btn.textContent;
+    btn.textContent = 'Kopyalandı ✓';
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  }).catch(() => alert('Kopyalanamadı, kodu elle seçip kopyala.'));
+}
+async function openCameraFor(onResult){
+  teardownPairingMedia();
+  const body = $id('pairBody');
+  const holder = document.createElement('div');
+  holder.className = 'scanner-container';
+  holder.innerHTML = `
+    <div class="scanner-video-wrap">
+      <video id="scanVideo" playsinline autoplay muted></video>
+      <div class="scanner-overlay">
+        <div class="scanner-frame">
+          <div class="scanner-laser"></div>
+        </div>
+      </div>
+    </div>
+    <div class="scanner-controls">
+      <div class="scan-status"><span class="pulse"></span>Karekodu çerçeveye hizalayın…</div>
+      <div class="row">
+        <button type="button" class="btn btn-ghost" id="fileScanBtn" style="flex:1;">📁 Fotoğraftan seç</button>
+        <button type="button" class="btn btn-ghost" id="closeCameraBtn" style="flex:1;">✕ Kapat</button>
+      </div>
+      <input type="file" id="qrFileInput" accept="image/*" style="display:none;">
+    </div>
+  `;
+  body.appendChild(holder);
+  activeScanHolder = holder;
+
+  const closeBtn = holder.querySelector('#closeCameraBtn');
+  closeBtn.addEventListener('click', () => teardownPairingMedia());
+
+  const fileInput = holder.querySelector('#qrFileInput');
+  const fileBtn = holder.querySelector('#fileScanBtn');
+  fileBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    const statusEl = holder.querySelector('.scan-status');
+    if(statusEl) statusEl.innerHTML = '<span class="pulse"></span>Fotoğraf taranıyor…';
+    const img = new Image();
+    img.onload = async () => {
+      let result = null;
+      if(barcodeDetector){
+        try{
+          const codes = await barcodeDetector.detect(img);
+          if(codes && codes.length > 0 && codes[0].rawValue) result = codes[0].rawValue;
+        }catch(err){}
+      }
+      if(!result && typeof jsQR === 'function'){
+        try{
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth || img.width;
+          c.height = img.naturalHeight || img.height;
+          const cx = c.getContext('2d');
+          cx.drawImage(img, 0, 0);
+          const idata = cx.getImageData(0, 0, c.width, c.height);
+          const code = jsQR(idata.data, idata.width, idata.height, { inversionAttempts: 'attemptBoth' });
+          if(code && code.data) result = code.data;
+        }catch(err){}
+      }
+      if(result){
+        playScanBeep();
+        if(navigator.vibrate) try{ navigator.vibrate(100); }catch(e){}
+        teardownPairingMedia();
+        onResult(result);
+      }else{
+        if(statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">Fotoğrafta karekod bulunamadı. Lütfen net bir karekod seçin.</span>';
+      }
+    };
+    img.onerror = () => {
+      if(statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">Fotoğraf yüklenemedi.</span>';
+    };
+    img.src = URL.createObjectURL(file);
+  });
+
+  if(!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    holder.querySelector('.scanner-video-wrap').innerHTML = `<p class="hint" style="color:var(--danger); padding:16px;">Kamera bu sayfada kullanılamıyor. Tarayıcılar kamerayı yalnızca <b>https://</b> veya <b>localhost</b> üzerinden açılan sayfalarda çalıştırır — dosyayı <b>file://</b> ile açtıysan kamera engellenir. Local bir sunucudan açın veya <b>📁 Fotoğraftan seç</b> / metin kutusunu kullanın.</p>`;
+    return;
+  }
+
+  try{
+    pairScanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+  }catch(err){
+    try{
+      pairScanStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    }catch(err2){
+      holder.querySelector('.scanner-video-wrap').innerHTML = `<p class="hint" style="color:var(--danger); padding:16px;">Kameraya erişilemedi (${escapeHtml(err2.name || '')}): ${escapeHtml(err2.message)}. Kamera izni verildiğinden emin olun veya <b>📁 Fotoğraftan seç</b> butonunu kullanın.</p>`;
+      return;
+    }
+  }
+
+  const video = holder.querySelector('#scanVideo');
+  video.srcObject = pairScanStream;
+  video.muted = true;
+  await video.play().catch(e => console.warn('Video play error:', e));
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let isScanningFrame = false;
+
+  async function tick(){
+    if(!pairScanStream) return;
+    if(!isScanningFrame && video.readyState >= 2 && video.videoWidth > 0){
+      isScanningFrame = true;
+      try{
+        let foundData = null;
+        if(barcodeDetector){
+          try{
+            const codes = await barcodeDetector.detect(video);
+            if(codes && codes.length > 0 && codes[0].rawValue){
+              foundData = codes[0].rawValue;
+            }
+          }catch(e){}
+        }
+
+        if(!foundData && typeof jsQR === 'function'){
+          try{
+            const maxDim = 800;
+            let w = video.videoWidth;
+            let h = video.videoHeight;
+            if(w > maxDim || h > maxDim){
+              if(w > h){ h = Math.round(h * (maxDim / w)); w = maxDim; }
+              else{ w = Math.round(w * (maxDim / h)); h = maxDim; }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            ctx.drawImage(video, 0, 0, w, h);
+            const img = ctx.getImageData(0, 0, w, h);
+            const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+            if(code && code.data){
+              foundData = code.data;
+            }
+          }catch(e){}
+        }
+
+        if(foundData){
+          playScanBeep();
+          if(navigator.vibrate) try{ navigator.vibrate(100); }catch(e){}
+          teardownPairingMedia();
+          onResult(foundData);
+          return;
+        }
+      }catch(err){
+        console.warn('Frame scan err:', err);
+      }finally{
+        isScanningFrame = false;
+      }
+    }
+    pairScanRAF = requestAnimationFrame(tick);
+  }
+  pairScanRAF = requestAnimationFrame(tick);
+}
+function onPairingSuccess(peerId, name){
+  disconnectSignaling();
+  teardownPairingMedia();
+  const body = $id('pairBody');
+  body.innerHTML = `
+    <div class="success-box">
+      <div class="check">✓</div>
+      <div class="choice-title">Bağlandı</div>
+      <div class="hint">${escapeHtml(name || '')} ile sohbet hazır.</div>
+      <button class="btn btn-primary" id="goToChatBtn">Sohbete git</button>
+    </div>
+  `;
+  $id('goToChatBtn').addEventListener('click', () => openChat(peerId));
+}
+
+/* =====================================================================
+   CHAT SCREEN
+   ===================================================================== */
+let currentChatId = null;
+
+async function openChat(id){
+  currentChatId = id;
+  const name = await getContactName(id) || 'Bilinmeyen';
+  $id('chatPeerName').textContent = name;
+  await renderMessages(id);
+  updateChatStatus(connStatus[id] === 'on' ? 'on' : 'off');
+  show('chat');
+}
+function updateChatStatus(state){
+  const bar = $id('chatStatus');
+  const strip = $id('reconnectStrip');
+  if(state === 'on'){
+    bar.textContent = '● bağlı — mesajlar doğrudan gidiyor';
+    bar.className = 'status-bar on';
+    strip.classList.add('hidden');
+  }else{
+    bar.textContent = '○ bağlantı yok';
+    bar.className = 'status-bar off';
+    strip.classList.remove('hidden');
+  }
+}
+async function renderMessages(id){
+  const wrap = $id('messages');
+  wrap.innerHTML = '';
+  const msgs = await getMessagesForPeer(id);
+  msgs.forEach(appendBubble);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function appendBubble(msg){
+  const wrap = $id('messages');
+  const b = document.createElement('div');
+  b.className = 'bubble ' + (msg.from === 'me' ? 'me' : 'them');
+  const time = new Date(msg.ts || Date.now()).toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' });
+  b.innerHTML = `${escapeHtml(msg.text)}<span class="t">${time}</span>`;
+  wrap.appendChild(b);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+$id('sendBtn').addEventListener('click', sendCurrentMessage);
+$id('msgInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') sendCurrentMessage(); });
+async function sendCurrentMessage(){
+  const input = $id('msgInput');
+  const text = input.value.trim();
+  if(!text || !currentChatId) return;
+  const msg = { from:'me', text, ts:Date.now() };
+  if(dc && dc.readyState === 'open' && activePeerId === currentChatId){
+    dc.send(JSON.stringify({ text }));
+  }
+  await saveMessage(currentChatId, msg);
+  appendBubble(msg);
+  await renderContactList();
+  input.value = '';
+}
+$id('reconnectBtn').addEventListener('click', () => openPairing(currentChatId));
+
+$id('deletePeerBtn').addEventListener('click', async () => {
+  if(!currentChatId) return;
+  const id = currentChatId;
+  const name = (await getContactName(id)) || 'Bu kişi';
+  if(!confirm(name + ' silinsin mi? Bu kişiyle geçmiş tüm mesajlar da bu cihazdan silinir.')) return;
+  currentChatId = null;
+  if(activePeerId === id){
+    try{ if(dc) dc.close(); }catch(e){}
+    try{ if(pc) pc.close(); }catch(e){}
+    dc = null; pc = null; activePeerId = null;
+  }
+  delete connStatus[id];
+  await idbDeleteByIndex('messages', 'byPeer', id);
+  await idbDelete('contacts', id);
+  show('home');
+  await renderContactList();
+});
+
+/* =====================================================================
+   SETTINGS — set / change / remove the app password
+   ===================================================================== */
+async function renderSettingsScreen(){
+  const meta = await idbGet('lockmeta', 'lock');
+  const body = $id('settingsBody');
+  // WhatsApp tarzı profil başlığı: avatar + ad + e-posta, düzenlenebilir.
+  const profileHTML = `
+    <div class="profile-header" id="pfBlock">
+      <div class="profile-avatar-lg">${initials(me.name)}</div>
+      <div style="flex:1; min-width:0;">
+        <div class="profile-name">${escapeHtml(me.name)}</div>
+        <div class="profile-mail">${escapeHtml(me.email || '')}</div>
+      </div>
+      <button class="btn btn-ghost" id="pfEditBtn" style="padding:8px 14px; font-size:12.5px;">Düzenle</button>
+    </div>
+  `;
+  if(meta && meta.enabled){
+    body.innerHTML = profileHTML + `
+      <div class="settings-section">
+        <div class="section-title">Şifre aktif</div>
+        <p class="hint">Uygulama her açılışta şifre soruyor, mesajların cihazda şifreli tutuluyor.</p>
+        <button class="btn btn-ghost btn-block" id="lockNowBtn">Şimdi kilitle</button>
+      </div>
+      <div class="settings-section">
+        <div class="section-title">Şifreyi değiştir</div>
+        <input type="password" class="name-input" id="curPass" placeholder="Mevcut şifre">
+        <input type="password" class="name-input" id="newPass1" placeholder="Yeni şifre">
+        <input type="password" class="name-input" id="newPass2" placeholder="Yeni şifre (tekrar)">
+        <div class="error-text" id="changeError"></div>
+        <button class="btn btn-primary btn-block" id="changePassBtn">Şifreyi değiştir</button>
+      </div>
+      <div class="settings-section">
+        <div class="section-title">Şifreyi kaldır</div>
+        <input type="password" class="name-input" id="removePass" placeholder="Mevcut şifre">
+        <div class="error-text" id="removeError"></div>
+        <button class="btn btn-ghost btn-block" id="removePassBtn">Şifreyi kaldır</button>
+      </div>
+    `;
+    $id('lockNowBtn').addEventListener('click', () => {
+      cryptoKey = null;
+      $id('contactList').innerHTML = '';
+      $id('messages').innerHTML = '';
+      renderLockScreen(meta);
+      show('lockscreen');
+    });
+    $id('changePassBtn').addEventListener('click', async () => {
+      const cur = $id('curPass').value, n1 = $id('newPass1').value, n2 = $id('newPass2').value;
+      if(!(await tryUnlock(cur, meta))){ $id('changeError').textContent = 'Mevcut şifre yanlış.'; return; }
+      if(!n1 || n1 !== n2){ $id('changeError').textContent = 'Yeni şifreler uyuşmuyor.'; return; }
+      const oldKey = cryptoKey;
+      const saltB64 = b64(crypto.getRandomValues(new Uint8Array(16)));
+      const newKey = await deriveKey(n1, saltB64);
+      await reencryptAll(oldKey, newKey);
+      const enc = await encryptText(newKey, UNLOCK_MAGIC);
+      await idbPut('lockmeta', { id:'lock', enabled:true, salt:saltB64, iv:enc.iv, cipher:enc.cipher });
+      cryptoKey = newKey;
+      await updateLockIcon();
+      await renderContactList();
+      show('home');
+    });
+    $id('removePassBtn').addEventListener('click', async () => {
+      const cur = $id('removePass').value;
+      if(!(await tryUnlock(cur, meta))){ $id('removeError').textContent = 'Şifre yanlış.'; return; }
+      await reencryptAll(cryptoKey, null);
+      await idbPut('lockmeta', { id:'lock', enabled:false });
+      cryptoKey = null;
+      await updateLockIcon();
+      await renderContactList();
+      show('home');
+    });
+  }else{
+    body.innerHTML = profileHTML + `
+      <div class="settings-section">
+        <div class="section-title">Şifre yok</div>
+        <p class="hint">İstersen bir şifre koy — mesajların cihazda şifreli tutulsun ve açılışta sorulsun. Şifreni unutursan eski mesajlar kurtarılamaz.</p>
+        <input type="password" class="name-input" id="addPass1" placeholder="Yeni şifre">
+        <input type="password" class="name-input" id="addPass2" placeholder="Yeni şifre (tekrar)">
+        <div class="error-text" id="addError"></div>
+        <button class="btn btn-primary btn-block" id="addPassBtn">Şifre koy</button>
+      </div>
+    `;
+    $id('addPassBtn').addEventListener('click', async () => {
+      const p1 = $id('addPass1').value, p2 = $id('addPass2').value;
+      if(!p1 || p1 !== p2){ $id('addError').textContent = 'Şifreler uyuşmuyor ya da boş.'; return; }
+      const saltB64 = b64(crypto.getRandomValues(new Uint8Array(16)));
+      const newKey = await deriveKey(p1, saltB64);
+      await reencryptAll(null, newKey);
+      const enc = await encryptText(newKey, UNLOCK_MAGIC);
+      await idbPut('lockmeta', { id:'lock', enabled:true, salt:saltB64, iv:enc.iv, cipher:enc.cipher });
+      cryptoKey = newKey;
+      await updateLockIcon();
+      await renderContactList();
+      show('home');
+    });
+  }
+  // Profilleri düzenleme (ad + e-posta)
+  $id('pfEditBtn').addEventListener('click', () => {
+    const block = $id('pfBlock');
+    block.innerHTML = `
+      <div class="profile-avatar-lg" aria-hidden="true">${initials(me.name)}</div>
+      <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:8px;">
+        <input id="pfNameEdit" class="name-input" style="max-width:100%;" placeholder="Ad" maxlength="24" value="${escapeHtml(me.name)}">
+        <input id="pfMailEdit" class="name-input" style="max-width:100%;" type="email" placeholder="E-posta" maxlength="64" value="${escapeHtml(me.email || '')}">
+        <div class="error-text" id="pfEditError" style="min-height:0;"></div>
+      </div>
+      <button class="btn btn-primary" id="pfSaveBtn" style="padding:8px 14px; font-size:12.5px;">Kaydet</button>
+    `;
+    $id('pfNameEdit').focus();
+    $id('pfSaveBtn').addEventListener('click', async () => {
+      const name = $id('pfNameEdit').value.trim();
+      const email = $id('pfMailEdit').value.trim();
+      if(!name){ $id('pfEditError').textContent = 'Ad boş olamaz.'; return; }
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ $id('pfEditError').textContent = 'Geçerli bir e-posta adresi gir.'; return; }
+      me = { id:'me', name, email };
+      await idbPut('profile', me);
+      $id('profileBtn').textContent = initials(me.name);
+      await renderSettingsScreen();
+    });
+  });
+  show('settings');
+}
+</script>
+</body>
+</html>
